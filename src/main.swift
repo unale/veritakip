@@ -44,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         menu.addItem(withTitle: "Ayarlar…",
                      action: #selector(ayarlarAc), keyEquivalent: ",")
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Hotspot Penceresi Aç (telefondan) 📱",
+                     action: #selector(hotspotPenceresi), keyEquivalent: "h")
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "VeriTakip'ten Çık",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.items.forEach { $0.target = ($0.action == #selector(NSApplication.terminate(_:))) ? NSApp : self }
@@ -125,6 +128,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     @objc func raporAc() {
         NSWorkspace.shared.open(veriDir.appendingPathComponent("rapor.html"))
+    }
+
+    // --- Yardımcı: komut çalıştır ---
+    @discardableResult
+    func kabuk(_ yol: String, _ args: [String], bekle: Bool = true) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: yol)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        do { try p.run() } catch { return "" }
+        if !bekle { return "" }
+        p.waitUntilExit()
+        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(),
+                      encoding: .utf8) ?? ""
+    }
+
+    func pythonYolu() -> String {
+        for y in ["/opt/homebrew/bin/python3", "/usr/bin/python3", "/usr/local/bin/python3"] {
+            if FileManager.default.fileExists(atPath: y) { return y }
+        }
+        return "/usr/bin/python3"
+    }
+
+    func hotspotVarMi() -> Bool {
+        if let s = jsonOku("state.json"), let d = s["son_ag_detay"] as? String, d == "hotspot" {
+            return true
+        }
+        return kabuk("/sbin/ifconfig", []).contains("172.20.10.")
+    }
+
+    func speedifyCalisiyorMu() -> Bool {
+        return !kabuk("/usr/bin/pgrep", ["-x", "Speedify"])
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // --- Hotspot Penceresi: yalnız telefon hattından çıkan ayrı Chrome ---
+    // Ethernet kablosuna dokunmadan, sadece bu pencere telefondan çıkar.
+    @objc func hotspotPenceresi() {
+        NSApp.activate(ignoringOtherApps: true)
+        let chrome = "/Applications/Google Chrome.app"
+        guard FileManager.default.fileExists(atPath: chrome) else {
+            let a = NSAlert()
+            a.messageText = "Google Chrome gerekli"
+            a.informativeText = "Hotspot Penceresi için Google Chrome kurulu olmalı."
+            a.runModal(); return
+        }
+        if !hotspotVarMi() {
+            let a = NSAlert()
+            a.messageText = "Telefon bağlı değil"
+            a.informativeText = "Önce iPhone'unuzun Kişisel Erişim Noktası'na bağlanın " +
+                "(Ethernet kablosunu çekmenize gerek yok), sonra tekrar deneyin. " +
+                "Pencere yalnızca telefon hattından çalışır."
+            a.addButton(withTitle: "Tamam"); a.runModal(); return
+        }
+        if speedifyCalisiyorMu() {
+            let a = NSAlert()
+            a.messageText = "Speedify (VPN) açık"
+            a.informativeText = "Speedify tüm trafiği kendi tüneline aldığı için Hotspot " +
+                "Penceresi telefon hattı yerine VPN'den çıkabilir. Doğru çalışması için " +
+                "önce Speedify'ı kapatın."
+            a.addButton(withTitle: "Yine de Aç")
+            a.addButton(withTitle: "Vazgeç")
+            if a.runModal() != .alertFirstButtonReturn { return }
+        }
+        // Takılı eski proxy'leri temizle, taze başlat (port çakışması önlenir)
+        kabuk("/usr/bin/pkill", ["-f", "hotspot_proxy"])
+        usleep(300_000)
+        let proxy = veriDir.appendingPathComponent("hotspot_proxy.py").path
+        if FileManager.default.fileExists(atPath: proxy) {
+            kabuk(pythonYolu(), [proxy, "8899"], bekle: false)
+        }
+        let profil = veriDir.appendingPathComponent("hotspot-chrome").path
+        kabuk("/usr/bin/open",
+              ["-na", "Google Chrome", "--args",
+               "--user-data-dir=\(profil)",
+               "--proxy-server=socks5://127.0.0.1:8899",
+               "--no-first-run", "--no-default-browser-check",
+               "https://music.youtube.com"], bekle: false)
     }
 
     @objc func kalanGir() {

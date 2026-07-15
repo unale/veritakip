@@ -25,13 +25,13 @@ KUR="VeriTakip Kur.app"
 rm -rf "$KUR"
 osacompile -o "$KUR" "$SRC/kurulum.applescript"
 mkdir -p "$KUR/Contents/Resources/payload"
-cp "$SRC/veri_takip.py" "$SRC/kaldir.sh" "$SRC/kur_motor.sh" "$KUR/Contents/Resources/payload/"
+cp "$SRC/veri_takip.py" "$SRC/hotspot_proxy.py" "$SRC/kaldir.sh" "$SRC/kur_motor.sh" "$KUR/Contents/Resources/payload/"
 cp -R "$APP" "$KUR/Contents/Resources/payload/"
 
 echo "▸ Dağıtım zip'i oluşturuluyor…"
 rm -f VeriTakip-Kurulum.zip
 zip -rqy VeriTakip-Kurulum.zip "$KUR" "$SRC/KURULUM.html" README.md \
-    "$SRC/kur.sh" "$SRC/kaldir.sh" "$SRC/veri_takip.py" "$APP"
+    "$SRC/kur.sh" "$SRC/kaldir.sh" "$SRC/veri_takip.py" "$SRC/hotspot_proxy.py" "$APP"
 
 rm -rf "$TMP"
 echo "✅ Bitti: VeriTakip-Kurulum.zip  ·  VeriTakip.app  ·  VeriTakip Kur.app"

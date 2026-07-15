@@ -32,6 +32,7 @@ fi
 # --- Dosyalar ---
 mkdir -p "$HOME/VeriTakip"
 cp "$DIR/veri_takip.py" "$HOME/VeriTakip/"
+cp "$DIR/hotspot_proxy.py" "$HOME/VeriTakip/" 2>/dev/null || true
 if [ ! -f "$HOME/VeriTakip/config.json" ]; then
     cat > "$HOME/VeriTakip/config.json" <<EOF
 {"aylik_kota_gb": $KOTA, "donem_baslangic_gunu": $GUN, "gunluk_uyari_gb": 2.0, "aylik_uyari_yuzde": 80, "hotspot_onekler": $ONEKLER}
