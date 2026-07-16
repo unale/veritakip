@@ -338,6 +338,7 @@ def ornek_al():
     gun = data.setdefault(bugun, {})
     wifi_dev = wifi_aygiti()
     fiz = fiziksel_arayuzler()
+    saat = str(datetime.now().hour)   # 0-23, saatlik kayıt için
     tur_delta = {HOTSPOT: 0, WIFI: 0, ETHERNET: 0}
     for arayuz, ip in fiz.items():
         sayac = bayt_sayaclari(arayuz)
@@ -362,6 +363,11 @@ def ornek_al():
                 t["in"] += d_in
                 t["out"] += d_out
                 tur_delta[tur] += d_in + d_out
+                # Saatlik kayıt: hangi saatte hangi ağdan ne kadar
+                sh = gun.setdefault("saatlik", {}).setdefault(saat, {})
+                st = sh.setdefault(tur, {"in": 0, "out": 0})
+                st["in"] += d_in
+                st["out"] += d_out
         state.setdefault("sayaclar", {})[arayuz] = {"in": i_bytes, "out": o_bytes}
     if iface:
         state["son_ornek"] = datetime.now().isoformat(timespec="seconds")
@@ -403,6 +409,10 @@ def ornek_al():
                      "Wi-Fi'yi kapatıp Ethernet'e dönün.")
             uyarilar["anomali_ts"] = simdi
         state["anomali"] = True
+        # Geçmişe dönük analiz için: bu saatte anomali oldu diye işaretle
+        anom = gun.setdefault("anomali_saatler", [])
+        if int(saat) not in anom:
+            anom.append(int(saat))
     else:
         state["anomali"] = False
 
@@ -876,5 +886,28 @@ if __name__ == "__main__":
                             "kalan_gb": deger})
         ornek_al()
         print(f"Kaydedildi: kalan {deger} GB")
+    elif komut == "saatlik":
+        # Bir günün saat bazlı kullanımı: veri_takip.py saatlik [YYYY-MM-DD]
+        gun_str = sys.argv[2] if len(sys.argv) > 2 else date.today().isoformat()
+        data = yukle(DATA_FILE, {})
+        gun = data.get(gun_str, {})
+        sh = gun.get("saatlik", {})
+        anom = set(gun.get("anomali_saatler", []))
+        if not sh:
+            print(f"{gun_str} için saatlik kayıt yok "
+                  "(saatlik takip 2026-07-16'dan itibaren tutuluyor).")
+        else:
+            print(f"{gun_str} — saat bazlı kullanım (MB):")
+            print("Saat | Hotspot | Ethernet | Wi-Fi | ⚠️")
+            for s in range(24):
+                v = sh.get(str(s))
+                if not v:
+                    continue
+                def mb(t):
+                    x = v.get(t, {})
+                    return (x.get("in", 0) + x.get("out", 0)) / 1024**2
+                isaret = "⚠️ ethernet bağlıyken telefon!" if s in anom else ""
+                print(f"{s:02d}   | {mb('hotspot'):6.0f}  | {mb('ethernet'):7.0f}  | "
+                      f"{mb('wifi'):5.0f} | {isaret}")
     else:
         ornek_al()
