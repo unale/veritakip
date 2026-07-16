@@ -475,6 +475,12 @@ def rapor_yaz(data, config, state):
     bugun = date.today()
     d_bas = donem_baslangici(bugun, config["donem_baslangic_gunu"])
     kota = config["aylik_kota_gb"]
+    dil = config.get("dil", "tr")
+
+    def T(tr, en):
+        return en if dil == "en" else tr
+
+    marka = T("VeriTakip", "TetherTrack")
 
     bugun_veri = data.get(bugun.isoformat(), {})
     bugun_h = bugun_veri.get(HOTSPOT, {"in": 0, "out": 0})
@@ -505,19 +511,26 @@ def rapor_yaz(data, config, state):
 
     if kalan_bilgi:
         kalan_deger = f'{kalan_bilgi["kalan_gb"]:.1f} GB'
-        kalan_aciklama = f'{kalan_bilgi["tarih"].strftime("%d.%m %H:%M")} girişinize göre'
-        kalan_satir = (f'Girişinize göre kalan <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b>; '
-                       f'dönem sonuna {kalan_gun} gün var, günde ortalama '
-                       f'{kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB kullanabilirsiniz. '
-                       f'Telefonun kendi harcaması buraya yansımaz — arada bir '
-                       f'güncel değeri yeniden girin.')
+        kalan_aciklama = T(f'{kalan_bilgi["tarih"].strftime("%d.%m %H:%M")} girişinize göre',
+                           f'per your {kalan_bilgi["tarih"].strftime("%d.%m %H:%M")} entry')
+        kalan_satir = T(
+            f'Girişinize göre kalan <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b>; dönem sonuna '
+            f'{kalan_gun} gün var, günde ortalama {kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB '
+            f'kullanabilirsiniz. Telefonun kendi harcaması buraya yansımaz — arada bir '
+            f'güncel değeri yeniden girin.',
+            f'<b>{kalan_bilgi["kalan_gb"]:.1f} GB</b> remaining per your entry; {kalan_gun} days '
+            f'left in the period, so ~{kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB/day. The phone\'s '
+            f'own usage is not reflected here — re-enter the current value now and then.')
     else:
         kalan_deger = '—'
-        kalan_aciklama = '📶 menüsünden "Kalan Kotayı Gir"'
-        kalan_satir = ('Gerçek kalanı görmek için operatör uygulamanızdaki değeri '
-                       'menü çubuğundaki 📶 menüsünden "Kalan Kotayı Gir" ile işleyin. '
-                       'Telefonun kendi harcaması Mac\'ten ölçülemediği için kalan, '
-                       'yalnızca girişinizle hesaplanır.')
+        kalan_aciklama = T('📶 menüsünden "Kalan Kotayı Gir"', 'Menu 📶 → "Enter Remaining Quota"')
+        kalan_satir = T(
+            'Gerçek kalanı görmek için operatör uygulamanızdaki değeri menü çubuğundaki '
+            '📶 menüsünden "Kalan Kotayı Gir" ile işleyin. Telefonun kendi harcaması Mac\'ten '
+            'ölçülemediği için kalan, yalnızca girişinizle hesaplanır.',
+            'To see the real remaining amount, enter the value from your carrier\'s app via the '
+            'menu bar 📶 → "Enter Remaining Quota". Since the Mac cannot measure the phone\'s own '
+            'usage, the remaining amount is computed only from your entry.')
 
     # Son 30 günün çubukları
     gunler = []
@@ -537,7 +550,7 @@ def rapor_yaz(data, config, state):
         deger = f"{h_gb:.2f}" if h_gb >= 0.005 else ""
         vurgu = " bugun" if g == bugun else ""
         cubuklar += (f'<div class="gun{vurgu}" title="{g.strftime("%d.%m.%Y")} — '
-                     f'Hotspot: {h_gb:.2f} GB, Diğer ağ: {d_gb:.2f} GB">'
+                     f'Hotspot: {h_gb:.2f} GB, {T("Diğer ağ", "Other")}: {d_gb:.2f} GB">'
                      f'<span class="deger">{deger}</span>'
                      f'<div class="cubuk" style="height:{yükseklik}px"></div>'
                      f'<span class="etiket">{etiket}</span></div>')
@@ -546,8 +559,10 @@ def rapor_yaz(data, config, state):
         return f"{b / 1024**3:.2f} GB" if b >= 1024**3 else f"{b / 1024**2:.0f} MB"
 
     # --- Dönem geçmişi: her günü ait olduğu fatura dönemine topla ---
-    AYLAR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
-             "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
+    AYLAR = (["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+              "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"] if dil != "en" else
+             ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
     donemler = {}
     for g, aglar in data.items():
         try:
@@ -567,7 +582,8 @@ def rapor_yaz(data, config, state):
                 day=config["donem_baslangic_gunu"]) - timedelta(days=1)
             etiket = (f"{db.day} {AYLAR[db.month - 1]} – "
                       f"{d_son.day} {AYLAR[d_son.month - 1]} {d_son.year}")
-            devam = " · <span style='color:#e67e22'>devam ediyor</span>" if db == d_bas else ""
+            devam = (f" · <span style='color:#e67e22'>{T('devam ediyor', 'ongoing')}</span>"
+                     if db == d_bas else "")
             d_yuzde = min(100, d_gb / kota * 100) if kota else 0
             d_renk = "#e74c3c" if d_yuzde > 80 else ("#f39c12" if d_yuzde > 60 else "#27ae60")
             satirlar += (f'<tr><td style="white-space:nowrap">{etiket}{devam}</td>'
@@ -575,20 +591,24 @@ def rapor_yaz(data, config, state):
                          f'<div style="width:{d_yuzde:.1f}%;background:{d_renk}"></div></div></td>'
                          f'<td style="white-space:nowrap"><b>{d_gb:.2f} GB</b> '
                          f'<span class="alt">/ {kota}</span></td></tr>')
-        donem_bolum = (f'<br><div class="grafik"><b>Dönem geçmişi — fatura dönemine göre '
-                       f'hotspot toplamları</b>'
+        kesim = config["donem_baslangic_gunu"]
+        donem_not = T(f"Her satır bir fatura dönemidir (kesim günü: ayın {kesim}'i). "
+                      f"Çubuklar {kota} GB kotaya göre doludur.",
+                      f"Each row is a billing period (cycle day: {kesim}). "
+                      f"Bars fill relative to the {kota} GB quota.")
+        donem_bolum = (f'<br><div class="grafik"><b>'
+                       f'{T("Dönem geçmişi — fatura dönemine göre hotspot toplamları", "Billing-period history — hotspot totals per cycle")}</b>'
                        f'<table>{satirlar}</table>'
-                       f'<p class="alt">Her satır bir fatura dönemidir '
-                       f'(kesim günü: ayın {config["donem_baslangic_gunu"]}\'i). '
-                       f'Çubuklar {kota} GB kotaya göre doludur.</p></div>')
+                       f'<p class="alt">{donem_not}</p></div>')
 
     # --- Üç ağ için özet + uygulama dökümü (modal için JSON) ---
     gun_app = data.get(bugun.isoformat(), {}).get("uygulama", {})
+    dusen = T("kotadan düşer", "counts against quota")
+    dusmez = T("kotadan düşmez", "not counted")
     AG_META = [
-        (HOTSPOT, "iPhone Hotspot", "📱", "kotadan düşer",
-         bugun_h["in"] + bugun_h["out"]),
-        (ETHERNET, "Ethernet", "🔌", "kotadan düşmez", bugun_eth),
-        (WIFI, "Wi-Fi", "🏠", "kotadan düşmez", bugun_wifi),
+        (HOTSPOT, "iPhone Hotspot", "📱", dusen, bugun_h["in"] + bugun_h["out"]),
+        (ETHERNET, "Ethernet", "🔌", dusmez, bugun_eth),
+        (WIFI, "Wi-Fi", "🏠", dusmez, bugun_wifi),
     ]
     # Uygulama dökümü (nettop) süreçlerin localhost dahil TÜM bağlantılarını
     # sayar; ağ hanesi (netstat) ise yalnız fiziksel arayüzü. İki ölçümü
@@ -611,6 +631,36 @@ def rapor_yaz(data, config, state):
     renk = "#e74c3c" if yuzde > 80 else ("#f39c12" if yuzde > 60 else "#27ae60")
     AG_RENK = {HOTSPOT: "#e67e22", ETHERNET: "#2980b9", WIFI: "#27ae60"}
 
+    # --- Saatlik grafik (bugün): saat saat hotspot kullanımı + anomali işareti ---
+    gun_saatlik = bugun_veri.get("saatlik", {})
+    anom_saatler = set(bugun_veri.get("anomali_saatler", []))
+    saatlik_bolum = ""
+    if gun_saatlik:
+        saat_veri = []
+        for s in range(24):
+            v = gun_saatlik.get(str(s), {})
+            h = v.get(HOTSPOT, {}).get("in", 0) + v.get(HOTSPOT, {}).get("out", 0)
+            kablo = sum(v.get(t, {}).get("in", 0) + v.get(t, {}).get("out", 0)
+                        for t in (ETHERNET, WIFI))
+            saat_veri.append((s, gb(h), gb(kablo)))
+        smaks = max([h for _, h, _ in saat_veri] + [0.01])
+        scubuk = ""
+        for s, h, k in saat_veri:
+            yuk = max(2, round(h / smaks * 90)) if h > 0.001 else 2
+            anom = s in anom_saatler
+            crenk = "#e74c3c" if anom else "#e67e22"
+            isaret = "⚠️" if anom else ""
+            ipucu = (f"{s:02d}:00 — Hotspot {h:.2f} GB, {T('diğer', 'other')} {k:.2f} GB"
+                     + (T(" · ⚠️ telefona kaçış!", " · ⚠️ shifted to phone!") if anom else ""))
+            scubuk += (f'<div class="sgun" title="{ipucu}"><span class="sisaret">{isaret}</span>'
+                       f'<div class="scubuk" style="height:{yuk}px;background:{crenk}"></div>'
+                       f'<span class="setiket">{s:02d}</span></div>')
+        saatlik_bolum = (
+            f'<br><div class="grafik"><b>'
+            f'{T("Bugün saat bazında hotspot kullanımı", "Today’s hotspot usage by hour")}</b>'
+            f'<br><br><div class="sgunler">{scubuk}</div>'
+            f'<p class="alt">{T("Kırmızı çubuk / ⚠️: o saatte Ethernet bağlıyken trafik telefona kaçmış (kota erimesi).", "Red bar / ⚠️: at that hour, traffic shifted to the phone while Ethernet was connected (quota drain).")}</p></div>')
+
     # Modal + hücre etkileşimi — f-string dışında düz JS (kaçış gerekmez)
     js_kod = """
 const AG_RENK = {hotspot:'#e67e22', ethernet:'#2980b9', wifi:'#27ae60'};
@@ -621,13 +671,13 @@ function mbgb(b){
 }
 function agAc(tur){
   const a = AGLAR[tur]; if(!a) return;
-  document.getElementById('m-baslik').textContent = a.ikon+'  '+a.ad+' — bugün';
+  document.getElementById('m-baslik').textContent = a.ikon+'  '+a.ad+' — '+M_BUGUN;
   document.getElementById('m-baslik').style.color = AG_RENK[tur];
   document.getElementById('m-toplam').textContent = mbgb(a.toplam)+'  ('+a.not+')';
   let satir = '';
   if(a.apps.length===0){
     satir = '<tr><td colspan="4" style="color:#95a5a6;text-align:center;padding:22px">'
-          + 'Bugün bu ağda kayıtlı uygulama trafiği yok.</td></tr>';
+          + M_YOK+'</td></tr>';
   } else {
     for(const p of a.apps){
       const pay = a.toplam>0 ? Math.round((p.b/a.toplam)*100) : 0;
@@ -651,17 +701,19 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') agKapat(); });
     son_ornek = state.get("son_ornek", "-")
     detay = state.get("son_ag_detay") or {"hotspot": "hotspot", "diger": "wifi"}.get(
         state.get("son_ag", ""), "yok")
-    son_ag = {"hotspot": "iPhone Hotspot 📱 (kotadan düşer)",
-              "wifi": "Wi-Fi 🏠 (kotadan düşmez)",
-              "ethernet": "Ethernet 🔌 (kotadan düşmez)",
-              "vpn": "VPN 🔒 (trafik tünelde; sayım fiziksel hatlardan sürüyor)",
-              "yok": "Bağlantı yok"}.get(detay, "Bilinmiyor")
+    son_ag = {
+        "hotspot": T("iPhone Hotspot 📱 (kotadan düşer)", "iPhone Hotspot 📱 (counts against quota)"),
+        "wifi": T("Wi-Fi 🏠 (kotadan düşmez)", "Wi-Fi 🏠 (not counted)"),
+        "ethernet": T("Ethernet 🔌 (kotadan düşmez)", "Ethernet 🔌 (not counted)"),
+        "vpn": T("VPN 🔒 (trafik tünelde; sayım fiziksel hatlardan sürüyor)",
+                 "VPN 🔒 (traffic tunneled; counting from physical links)"),
+        "yok": T("Bağlantı yok", "No connection")}.get(detay, T("Bilinmiyor", "Unknown"))
 
     html = f"""<!DOCTYPE html>
-<html lang="tr"><head><meta charset="utf-8">
+<html lang="{dil}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="120">
-<title>VeriTakip — Veri Kullanımı</title>
+<title>{marka} — {T("Veri Kullanımı", "Data Usage")}</title>
 <style>
  :root {{
    --bg:#eef1f5; --kart:#ffffff; --metin:#243242; --alt:#7a8899;
@@ -709,6 +761,11 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') agKapat(); });
  .gun.bugun .cubuk {{ background:#e67e22; }}
  .etiket {{ font-size:.6em; color:var(--alt); margin-top:3px; }}
  .deger {{ font-size:.55em; color:var(--alt); margin-bottom:2px; white-space:nowrap; }}
+ .sgunler {{ display:flex; align-items:flex-end; gap:2px; height:120px; }}
+ .sgun {{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }}
+ .scubuk {{ width:100%; border-radius:3px 3px 0 0; min-height:2px; }}
+ .setiket {{ font-size:.55em; color:var(--alt); margin-top:3px; }}
+ .sisaret {{ font-size:.6em; margin-bottom:1px; height:1em; }}
  table {{ width:100%; border-collapse:collapse; margin-top:8px; }}
  th, td {{ text-align:left; padding:8px 10px; font-size:.9em; }}
  td.say, th.say {{ text-align:right; font-variant-numeric:tabular-nums; }}
@@ -733,50 +790,51 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') agKapat(); });
  #m-kapat {{ cursor:pointer; border:none; background:var(--raf); color:var(--metin);
            width:30px; height:30px; border-radius:50%; font-size:1em; flex:none; }}
 </style></head><body>
-<h1>📶 VeriTakip</h1>
-<p class="alt">Son güncelleme: {son_ornek} &nbsp;·&nbsp; Şu anki bağlantı: {son_ag}
-&nbsp;·&nbsp; Sayfa 2 dakikada bir yenilenir.</p>
+<h1>📶 {marka}</h1>
+<p class="alt">{T("Son güncelleme", "Last update")}: {son_ornek} &nbsp;·&nbsp; {T("Şu anki bağlantı", "Current connection")}: {son_ag}
+&nbsp;·&nbsp; {T("Sayfa 2 dakikada bir yenilenir.", "Page refreshes every 2 minutes.")}</p>
 
 <div class="kartlar">
- <div class="kart"><span class="ust">Bugün (hotspot)</span><b>{bugun_gb:.2f} GB</b>
+ <div class="kart"><span class="ust">{T("Bugün (hotspot)", "Today (hotspot)")}</span><b>{bugun_gb:.2f} GB</b>
    <span class="alt">↓{gb(bugun_h["in"]):.2f} ↑{gb(bugun_h["out"]):.2f} GB</span></div>
- <div class="kart"><span class="ust">Bu dönem (hotspot)</span><b>{donem_gb:.2f} GB</b>
-   <span class="alt">{d_bas.strftime("%d.%m.%Y")}'ten beri</span></div>
- <div class="kart"><span class="ust">Kalan kota</span><b>{kalan_deger}</b>
+ <div class="kart"><span class="ust">{T("Bu dönem (hotspot)", "This period (hotspot)")}</span><b>{donem_gb:.2f} GB</b>
+   <span class="alt">{T("", "since ")}{d_bas.strftime("%d.%m.%Y")}{T("'ten beri", "")}</span></div>
+ <div class="kart"><span class="ust">{T("Kalan kota", "Remaining quota")}</span><b>{kalan_deger}</b>
    <span class="alt">{kalan_aciklama}</span></div>
 </div>
 
 <div class="panel">
- <div class="baslik">{kota} GB paketin %{yuzde:.0f}'i bu bilgisayardan harcandı</div>
+ <div class="baslik">{T(f"{kota} GB paketin %{yuzde:.0f}'i bu bilgisayardan harcandı", f"{yuzde:.0f}% of the {kota} GB plan used by this computer")}</div>
  <div class="bar"><div style="width:{yuzde:.1f}%"></div></div>
  <p class="alt">{kalan_satir}</p>
 </div>
 
-<div class="baslik" style="font-weight:700; margin:22px 4px 2px">Bugün ağ bazında — ayrıntı için tıklayın</div>
+<div class="baslik" style="font-weight:700; margin:22px 4px 2px">{T("Bugün ağ bazında — ayrıntı için tıklayın", "Today by network — click for details")}</div>
 <div class="aglar">
  <button class="hucre" style="background:linear-gradient(135deg,#e67e22,#d35400)" onclick="agAc('hotspot')">
-   <span class="not">kotadan düşer</span>
+   <span class="not">{dusen}</span>
    <div class="ikon">📱</div><div class="ad">Hotspot</div>
-   <div class="val">{bugun_gb:.2f} GB</div><div class="ipucu">uygulama dökümü ›</div></button>
+   <div class="val">{bugun_gb:.2f} GB</div><div class="ipucu">{T("uygulama dökümü", "app breakdown")} ›</div></button>
  <button class="hucre" style="background:linear-gradient(135deg,#3498db,#2471a3)" onclick="agAc('ethernet')">
-   <span class="not">kotasız</span>
+   <span class="not">{T("kotasız", "free")}</span>
    <div class="ikon">🔌</div><div class="ad">Ethernet</div>
-   <div class="val">{gb(bugun_eth):.2f} GB</div><div class="ipucu">uygulama dökümü ›</div></button>
+   <div class="val">{gb(bugun_eth):.2f} GB</div><div class="ipucu">{T("uygulama dökümü", "app breakdown")} ›</div></button>
  <button class="hucre" style="background:linear-gradient(135deg,#27ae60,#1e8449)" onclick="agAc('wifi')">
-   <span class="not">kotasız</span>
+   <span class="not">{T("kotasız", "free")}</span>
    <div class="ikon">🏠</div><div class="ad">Wi-Fi</div>
-   <div class="val">{gb(bugun_wifi):.2f} GB</div><div class="ipucu">uygulama dökümü ›</div></button>
+   <div class="val">{gb(bugun_wifi):.2f} GB</div><div class="ipucu">{T("uygulama dökümü", "app breakdown")} ›</div></button>
 </div>
 
 <div class="panel">
- <div class="baslik">Son 30 gün — günlük hotspot kullanımı (GB)</div><br>
+ <div class="baslik">{T("Son 30 gün — günlük hotspot kullanımı (GB)", "Last 30 days — daily hotspot usage (GB)")}</div><br>
  <div class="gunler">{cubuklar}</div>
- <p class="alt">Turuncu çubuk bugünü gösterir. Üzerine gelince o günün ayrıntısı görünür.</p>
+ <p class="alt">{T("Turuncu çubuk bugünü gösterir. Üzerine gelince o günün ayrıntısı görünür.", "The orange bar is today. Hover for that day's detail.")}</p>
 </div>
+{saatlik_bolum}
 {donem_bolum}
 
-<p class="alt" style="margin-top:24px">Ayarlar: menü çubuğu 📶 → Ayarlar &nbsp;·&nbsp;
-Ethernet ve Wi-Fi yalnızca bilgi amaçlıdır, kotadan düşmez.</p>
+<p class="alt" style="margin-top:24px">{T("Ayarlar: menü çubuğu 📶 → Ayarlar", "Settings: menu bar 📶 → Settings")} &nbsp;·&nbsp;
+{T("Ethernet ve Wi-Fi yalnızca bilgi amaçlıdır, kotadan düşmez.", "Ethernet and Wi-Fi are informational only, not counted against quota.")}</p>
 
 <div class="modal" id="modal" onclick="agKapat(event)">
  <div class="modal-ic">
@@ -785,18 +843,18 @@ Ethernet ve Wi-Fi yalnızca bilgi amaçlıdır, kotadan düşmez.</p>
      <button id="m-kapat" onclick="agKapat(event)">✕</button>
    </div>
    <table>
-     <tr><th>Uygulama</th><th class="say">İndirme</th><th class="say">Yükleme</th>
-         <th class="say">Toplam</th><th>Pay</th></tr>
+     <tr><th>{T("Uygulama", "App")}</th><th class="say">{T("İndirme", "Down")}</th><th class="say">{T("Yükleme", "Up")}</th>
+         <th class="say">{T("Toplam", "Total")}</th><th>{T("Pay", "Share")}</th></tr>
      <tbody id="m-govde"></tbody>
    </table>
-   <p class="alt" style="margin-top:12px">En çok kullanan 15 uygulama (günlük).
-   Paylar, o ağdan geçen gerçek trafiğe oranlanmıştır; toplamları üstteki ağ
-   miktarıyla eşleşir. Uygulama ayrımı yaklaşıktır.</p>
+   <p class="alt" style="margin-top:12px">{T("En çok kullanan 15 uygulama (günlük). Paylar, o ağdan geçen gerçek trafiğe oranlanmıştır; toplamları üstteki ağ miktarıyla eşleşir. Uygulama ayrımı yaklaşıktır.", "Top 15 apps (daily). Shares are scaled to the real traffic on that network, so their total matches the amount above. The per-app split is approximate.")}</p>
  </div>
 </div>
 
 <script>
 const AGLAR = {ag_json};
+const M_BUGUN = {json.dumps(T("bugün", "today"))};
+const M_YOK = {json.dumps(T("Bugün bu ağda kayıtlı uygulama trafiği yok.", "No app traffic recorded on this network today."))};
 {js_kod}
 </script>
 </body></html>"""
@@ -814,11 +872,15 @@ const AGLAR = {ag_json};
                             ("hotspot", "📱 Hotspot"),
                             ("vpn", "🔒 VPN")))
     if kalan_bilgi:
-        mini_kalan = (f'Kalan: <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b> '
-                      f'(girişinize göre) &nbsp;·&nbsp; günde {kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB hakkınız var')
+        mini_kalan = T(
+            f'Kalan: <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b> (girişinize göre) &nbsp;·&nbsp; '
+            f'günde {kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB hakkınız var',
+            f'Left: <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b> (per your entry) &nbsp;·&nbsp; '
+            f'{kalan_bilgi["kalan_gb"] / kalan_gun:.2f} GB/day available')
     else:
-        mini_kalan = 'Kalan için: 📶 menü → "Kalan Kotayı Gir"'
-    mini = f"""<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
+        mini_kalan = T('Kalan için: 📶 menü → "Kalan Kotayı Gir"',
+                       'For remaining: 📶 menu → "Enter Remaining Quota"')
+    mini = f"""<!DOCTYPE html><html lang="{dil}"><head><meta charset="utf-8">
 <meta http-equiv="refresh" content="30">
 <style>
  body {{ font-family:-apple-system,sans-serif; margin:0; padding:14px 16px;
@@ -838,12 +900,12 @@ const AGLAR = {ag_json};
  .alarm {{ background:#e74c3c; color:#fff; padding:8px 11px; border-radius:9px;
           font-size:12px; font-weight:600; margin-bottom:10px; line-height:1.35; }}
 </style></head><body>
-{"<div class='alarm'>⚠️ İnternet TELEFONDAN gidiyor! Ethernet bağlı ama trafik hotspot hattından akıyor — kota eriyor.</div>" if state.get("anomali") else ""}
+{("<div class='alarm'>" + T("⚠️ İnternet TELEFONDAN gidiyor! Ethernet bağlı ama trafik hotspot hattından akıyor — kota eriyor.", "⚠️ Internet is going through the PHONE! Ethernet is connected but traffic flows via the hotspot — quota draining.") + "</div>") if state.get("anomali") else ""}
 <div class="cips">{cipler}</div>
-<div>📶 Bugün (hotspot): <span class="b">{bugun_gb:.2f} GB</span></div>
+<div>📶 {T("Bugün (hotspot)", "Today (hotspot)")}: <span class="b">{bugun_gb:.2f} GB</span></div>
 <div class="bar"><div style="width:{yuzde:.0f}%"></div></div>
-<div class="alt">Bu dönem toplam: <b>{donem_gb:.1f} GB</b> harcandı ({kota} GB paket)</div>
-<div class="alt">{mini_kalan} &nbsp;·&nbsp; Ölçüm: {saat}</div>
+<div class="alt">{T("Bu dönem toplam", "This period total")}: <b>{donem_gb:.1f} GB</b> {T("harcandı", "used")} ({kota} GB {T("paket", "plan")})</div>
+<div class="alt">{mini_kalan} &nbsp;·&nbsp; {T("Ölçüm", "Measured")}: {saat}</div>
 </body></html>"""
     tmp = MINI_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
