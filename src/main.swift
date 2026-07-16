@@ -60,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         acilisSatiri = menu.addItem(withTitle: "Bilgisayar açılınca başlat",
                                     action: #selector(acilisToggle), keyEquivalent: "")
         acilisSatiri?.state = acilistaBaslarMi() ? .on : .off
+        menu.addItem(withTitle: "Yardım / Geri Bildirim ✉️",
+                     action: #selector(yardimAc), keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Hotspot Penceresi Aç (telefondan) 📱",
                      action: #selector(hotspotPenceresi), keyEquivalent: "h")
@@ -145,6 +147,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     @objc func raporAc() {
         NSWorkspace.shared.open(veriDir.appendingPathComponent("rapor.html"))
+    }
+
+    // --- Yardım / Geri Bildirim: geliştiriciye e-posta taslağı açar ---
+    @objc func yardimAc() {
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "Yardım / Geri Bildirim"
+        a.informativeText = "Bir sorun, hata veya öneriniz mi var? Aşağıdaki düğme " +
+            "e-posta uygulamanızda geliştiriciye (Emir Ünal) bir mesaj taslağı açar. " +
+            "Olabildiğince açık yazın; en kısa sürede dönüş yapılır.\n\n" +
+            "Alternatif: GitHub üzerinde de sorun açabilirsiniz."
+        a.addButton(withTitle: "E-posta Gönder")
+        a.addButton(withTitle: "GitHub'da Aç")
+        a.addButton(withTitle: "Vazgeç")
+        let sonuc = a.runModal()
+        let os = ProcessInfo.processInfo.operatingSystemVersionString
+        func enc(_ s: String) -> String {
+            s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
+        }
+        if sonuc == .alertFirstButtonReturn {
+            let konu = "VeriTakip — Geri Bildirim / Hata"
+            let govde = "Merhaba,\n\n[Sorununuzu, hatayı veya talebinizi buraya yazın]\n\n" +
+                "\n---\nVeriTakip sürüm 1.0\nmacOS: \(os)"
+            if let url = URL(string: "mailto:emirunal@gmail.com?subject=\(enc(konu))&body=\(enc(govde))") {
+                NSWorkspace.shared.open(url)
+            }
+        } else if sonuc == .alertSecondButtonReturn {
+            if let url = URL(string: "https://github.com/unale/veritakip/issues/new") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     // --- Açılışta başlat (Login Item) aç/kapat ---
