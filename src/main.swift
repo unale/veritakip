@@ -181,9 +181,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
         }
         if sonuc == .alertFirstButtonReturn {
-            let konu = "VeriTakip — Geri Bildirim / Hata"
-            let govde = "Merhaba,\n\n[Sorununuzu, hatayı veya talebinizi buraya yazın]\n\n" +
-                "\n---\nVeriTakip sürüm 1.0\nmacOS: \(os)"
+            // Otomatik oluşmuş sorun raporu varsa e-postaya ekle
+            let sorunURL = veriDir.appendingPathComponent("sorun_raporu.txt")
+            let sorun = (try? String(contentsOf: sorunURL, encoding: .utf8)) ?? ""
+            let konu = sorun.isEmpty
+                ? L("TetherTrack — Geri Bildirim / Hata", "TetherTrack — Feedback / Issue")
+                : L("TetherTrack — Sorun Raporu", "TetherTrack — Problem Report")
+            var govde = L("Merhaba,\n\n[Sorununuzu, hatayı veya talebinizi buraya yazın]\n\n",
+                          "Hello,\n\n[Write your problem, bug or request here]\n\n")
+            if !sorun.isEmpty {
+                govde += L("\n--- Otomatik Sorun Raporu ---\n", "\n--- Automatic Problem Report ---\n") + sorun
+            }
+            govde += "\n---\nTetherTrack 1.0\nmacOS: \(os)"
             if let url = URL(string: "mailto:emirunal@gmail.com?subject=\(enc(konu))&body=\(enc(govde))") {
                 NSWorkspace.shared.open(url)
             }

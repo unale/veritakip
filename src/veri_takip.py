@@ -29,6 +29,7 @@ CONFIG_FILE = os.path.join(VERI_DIR, "config.json")
 RAPOR_FILE = os.path.join(VERI_DIR, "rapor.html")
 MINI_FILE = os.path.join(VERI_DIR, "mini.html")
 KALAN_FILE = os.path.join(VERI_DIR, "kalan.json")
+SORUN_FILE = os.path.join(VERI_DIR, "sorun_raporu.txt")
 
 DEFAULT_CONFIG = {
     "aylik_kota_gb": 60,        # telefon paketindeki toplam internet
@@ -197,6 +198,76 @@ def ip_hotspot_mu(ip, config):
     """Arayüzün IP'si hotspot ağından mı? (iPhone istemcilere 172.20.10.x verir)"""
     onekler = config.get("hotspot_onekler", ["172.20.10."])
     return any(ip.startswith(o) for o in onekler)
+
+
+def telefon_sizinti(config):
+    """Telefon hattından çıkan, HOTSPOT PROXY DIŞINDAKI süreçleri bulur.
+
+    Hotspot Penceresi trafiği yerel proxy'den (hotspot_proxy.py) geçer; bu
+    beklenen kullanımdır. Başka herhangi bir sürecin telefon IP'sinden
+    doğrudan bağlantısı = İSTENMEYEN SIZINTI (kota erimesi). Döner:
+    {"surec_adi": bağlantı_sayısı}.
+    """
+    onekler = tuple(config.get("hotspot_onekler", ["172.20.10."]))
+    # Proxy süreçlerinin PID'leri (bunlar beklenen, hariç tutulur)
+    proxy_pidler = set(calistir(["pgrep", "-f", "hotspot_proxy"]).split())
+    out = calistir(["lsof", "-i", "-n", "-P"])
+    sizinti = {}
+    for satir in out.splitlines():
+        if "ESTABLISHED" not in satir:
+            continue
+        p = satir.split()
+        if len(p) < 9:
+            continue
+        komut, pid, adres = p[0], p[1], p[8]
+        yerel = adres.split("->")[0]  # "172.20.10.8:52345"
+        yerel_ip = yerel.rsplit(":", 1)[0]
+        if yerel_ip.startswith(onekler) and pid not in proxy_pidler:
+            sizinti[komut] = sizinti.get(komut, 0) + 1
+    return sizinti
+
+
+def sorun_raporu_yaz(sizinti, iface, gw, fiz, config):
+    """Sızıntı tespit edilince kullanıcı bilgisayarına insan-okunur rapor yazar."""
+    dil = config.get("dil", "tr")
+    su_an = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    apps = ", ".join(f"{a} ({n})" for a, n in
+                     sorted(sizinti.items(), key=lambda kv: -kv[1]))
+    arayuzler = ", ".join(f"{k}={v}" for k, v in fiz.items())
+    if dil == "en":
+        rapor = (
+            f"TetherTrack — Problem Report\n{'='*40}\n"
+            f"Time: {su_an}\n\n"
+            f"PROBLEM: Data is going through the PHONE outside the Hotspot Window.\n\n"
+            f"Apps leaking to phone: {apps}\n"
+            f"Default route interface: {iface} (gateway {gw})\n"
+            f"Active interfaces: {arayuzler}\n\n"
+            f"Likely cause: These apps opened connections while the phone was the\n"
+            f"primary link (e.g. restricted Ethernet, or while the Hotspot Window\n"
+            f"was opening) and kept them on the phone.\n\n"
+            f"Fix: Restart the listed app(s) so new connections use Ethernet; or\n"
+            f"briefly turn the phone hotspot off and on. Closing the Hotspot Window\n"
+            f"does NOT fix already-leaked connections.\n\n"
+            f"To send this report to the developer: menu 📶 → Help / Feedback.\n")
+    else:
+        rapor = (
+            f"TetherTrack (VeriTakip) — Sorun Raporu\n{'='*40}\n"
+            f"Zaman: {su_an}\n\n"
+            f"SORUN: Hotspot Penceresi dışında TELEFON hattından veri gidiyor.\n\n"
+            f"Telefona sızan uygulamalar: {apps}\n"
+            f"Varsayılan yol arayüzü: {iface} (ağ geçidi {gw})\n"
+            f"Bağlı arayüzler: {arayuzler}\n\n"
+            f"Olası neden: Bu uygulamalar telefon birincil bağlantıyken (kısıtlı\n"
+            f"Ethernet ya da Hotspot Penceresi açılırken) bağlantı kurdu ve o\n"
+            f"bağlantıları telefonda tuttu.\n\n"
+            f"Çözüm: Listelenen uygulamaları yeniden başlatın (yeni bağlantılar\n"
+            f"Ethernet'ten kurulur); ya da telefon hotspot'unu kısaca kapatıp açın.\n"
+            f"Hotspot Penceresi'ni kapatmak, önceden sızmış bağlantıları düzeltmez.\n\n"
+            f"Bu raporu geliştiriciye göndermek için: menü 📶 → Yardım / Geri Bildirim.\n")
+    tmp = SORUN_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(rapor)
+    os.replace(tmp, SORUN_FILE)
 
 
 def bildirim(baslik, mesaj):
@@ -393,28 +464,46 @@ def ornek_al():
 
     kalan_bilgi = kalan_hesapla(donem_bayt, d_bas)
 
-    # --- ACİL KORUMA: Ethernet/Wi-Fi bağlıyken trafik telefona kaydıysa ---
-    # macOS, kısıtlı Ethernet yerine hotspot'u "birincil" yapabilir; o zaman
-    # TÜM trafik (yalnız istenen pencere değil) telefondan gider ve kota erir.
+    # --- ACİL KORUMA: Hotspot penceresi DIŞINDA telefondan veri sızması ---
+    # Uygulamanın temel vaadi: hotspot yalnızca istenen pencere için kullanılır.
+    # Başka bir sürecin telefon hattından çıkması = istenmeyen sızıntı (kota erir).
     hotspot_bagli = any(ip_hotspot_mu(ip, config) for ip in fiz.values())
     kablo_bagli = any(not ip_hotspot_mu(ip, config) for ip in fiz.values())
     default_telefon = state.get("son_ag_detay") == HOTSPOT
+    dl = config.get("dil", "tr")
     uyarilar = state.setdefault("uyarilar", {})
-    if hotspot_bagli and kablo_bagli and default_telefon:
+
+    # Telefon bağlıysa: hotspot proxy dışındaki süreçleri tespit et (asıl sızıntı)
+    sizinti = telefon_sizinti(config) if hotspot_bagli else {}
+    # Sızıntı VEYA tüm trafiğin telefona kayması → anomali
+    anomali_var = bool(sizinti) or (hotspot_bagli and kablo_bagli and default_telefon)
+
+    if anomali_var:
         simdi = datetime.now().timestamp()
+        app_liste = ", ".join(f"{a} ({n})" for a, n in
+                              sorted(sizinti.items(), key=lambda kv: -kv[1])) or \
+                    ("tüm trafik" if dl != "en" else "all traffic")
         if simdi - uyarilar.get("anomali_ts", 0) > 90:  # ~her 90 sn'de tekrar
-            bildirim("⚠️ DİKKAT — İnternet telefondan gidiyor!",
-                     "Ethernet/Wi-Fi bağlı ama tüm trafik TELEFON hattından akıyor; "
-                     "kotanız hızla eriyor. Hotspot penceresini kapatın ve gerekirse "
-                     "Wi-Fi'yi kapatıp Ethernet'e dönün.")
+            if dl == "en":
+                bildirim("⚠️ WARNING — Phone data leak!",
+                         f"Data is going through the PHONE outside the hotspot window "
+                         f"({app_liste}). Quota is draining. A problem report was saved; "
+                         f"open menu 📶 → Help / Feedback to send it.")
+            else:
+                bildirim("⚠️ DİKKAT — Telefondan veri sızıyor!",
+                         f"Hotspot penceresi DIŞINDA telefon hattından veri gidiyor "
+                         f"({app_liste}). Kota eriyor. Sorun raporu kaydedildi; "
+                         f"menü 📶 → Yardım / Geri Bildirim ile gönderebilirsiniz.")
             uyarilar["anomali_ts"] = simdi
         state["anomali"] = True
-        # Geçmişe dönük analiz için: bu saatte anomali oldu diye işaretle
+        state["sizinti"] = sizinti
+        sorun_raporu_yaz(sizinti, iface or "?", gw or "?", fiz, config)
         anom = gun.setdefault("anomali_saatler", [])
         if int(saat) not in anom:
             anom.append(int(saat))
     else:
         state["anomali"] = False
+        state.pop("sizinti", None)
 
     # Hotspot'a yeni bağlanıldıysa güncel durumu bildir
     if (config.get("bildirim_baglanti", True)
@@ -900,7 +989,7 @@ const M_YOK = {json.dumps(T("Bugün bu ağda kayıtlı uygulama trafiği yok.", 
  .alarm {{ background:#e74c3c; color:#fff; padding:8px 11px; border-radius:9px;
           font-size:12px; font-weight:600; margin-bottom:10px; line-height:1.35; }}
 </style></head><body>
-{("<div class='alarm'>" + T("⚠️ İnternet TELEFONDAN gidiyor! Ethernet bağlı ama trafik hotspot hattından akıyor — kota eriyor.", "⚠️ Internet is going through the PHONE! Ethernet is connected but traffic flows via the hotspot — quota draining.") + "</div>") if state.get("anomali") else ""}
+{("<div class='alarm'>" + (T(f"⚠️ Hotspot dışında telefondan veri sızıyor: {', '.join(state.get('sizinti', {}).keys())}. Kota eriyor! Yardım: 📶 menü.", f"⚠️ Phone data leak outside hotspot: {', '.join(state.get('sizinti', {}).keys())}. Quota draining! Help: 📶 menu.") if state.get("sizinti") else T("⚠️ İnternet TELEFONDAN gidiyor! Kota eriyor.", "⚠️ Internet via PHONE! Quota draining.")) + "</div>") if state.get("anomali") else ""}
 <div class="cips">{cipler}</div>
 <div>📶 {T("Bugün (hotspot)", "Today (hotspot)")}: <span class="b">{bugun_gb:.2f} GB</span></div>
 <div class="bar"><div style="width:{yuzde:.0f}%"></div></div>
