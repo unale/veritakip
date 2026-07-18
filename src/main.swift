@@ -162,35 +162,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         return "en0"
     }
 
-    // Sızıntı tespit edilince kullanıcıya somut aksiyon sun
+    // Sızıntı tespit edilince kullanıcıya somut aksiyon sun.
+    // Rapor gönderdikten sonra uyarı tekrar gelir; böylece Wi-Fi'yi kapatma
+    // seçeneği kaybolmaz. Yalnızca Wi-Fi kapatma veya "Kapat" ile çıkılır.
     func sizintiAksiyon(_ state: [String: Any]) {
-        NSApp.activate(ignoringOtherApps: true)
         let apps = ((state["sizinti"] as? [String: Any])?.keys.sorted().joined(separator: ", ")) ?? ""
-        let a = NSAlert()
-        a.messageText = L("⚠️ Telefondan veri sızıyor", "⚠️ Phone data leak")
-        a.informativeText = L(
-            "Hotspot penceresi DIŞINDA telefon hattından veri gidiyor: \(apps). Kotanız eriyor.\n\n" +
-            "Telefon bağlantısını (Wi-Fi hotspot) keserek sızıntıyı hemen durdurabilirsiniz — " +
-            "Ethernet'ten çalışmaya devam edersiniz.",
-            "Data is leaving via the PHONE outside the Hotspot Window: \(apps). Your quota is draining.\n\n" +
-            "You can stop the leak now by cutting the phone connection (Wi-Fi hotspot) — " +
-            "you'll keep working over Ethernet.")
-        a.addButton(withTitle: L("Wi-Fi'yi Kapat (bağlantıyı kes)", "Turn Off Wi-Fi (cut connection)"))
-        a.addButton(withTitle: L("Sorun Raporu Gönder", "Send Problem Report"))
-        a.addButton(withTitle: L("Şimdilik Kapat", "Dismiss"))
-        let s = a.runModal()
-        if s == .alertFirstButtonReturn {
-            kabuk("/usr/sbin/networksetup", ["-setairportpower", wifiAygiti(), "off"])
-            let t = NSAlert()
-            t.messageText = L("Wi-Fi kapatıldı ✅", "Wi-Fi turned off ✅")
-            t.informativeText = L(
-                "Telefon bağlantısı kesildi, sızıntı durdu. Ethernet'ten devam ediyorsunuz. " +
-                "Telefonu tekrar kullanmak için menü çubuğundaki Wi-Fi simgesinden açın.",
-                "The phone connection is cut and the leak stopped. You're on Ethernet now. " +
-                "Turn Wi-Fi back on from the menu-bar Wi-Fi icon to use the phone again.")
-            t.runModal()
-        } else if s == .alertSecondButtonReturn {
-            yardimAc()
+        while true {
+            NSApp.activate(ignoringOtherApps: true)
+            let a = NSAlert()
+            a.messageText = L("⚠️ Telefondan veri sızıyor", "⚠️ Phone data leak")
+            a.informativeText = L(
+                "Hotspot penceresi DIŞINDA telefon hattından veri gidiyor: \(apps). Kotanız eriyor.\n\n" +
+                "Telefon bağlantısını (Wi-Fi hotspot) keserek sızıntıyı hemen durdurabilirsiniz — " +
+                "Ethernet'ten çalışmaya devam edersiniz.",
+                "Data is leaving via the PHONE outside the Hotspot Window: \(apps). Your quota is draining.\n\n" +
+                "You can stop the leak now by cutting the phone connection (Wi-Fi hotspot) — " +
+                "you'll keep working over Ethernet.")
+            a.addButton(withTitle: L("Wi-Fi'yi Kapat (bağlantıyı kes)", "Turn Off Wi-Fi (cut connection)"))
+            a.addButton(withTitle: L("Sorun Raporu Gönder", "Send Problem Report"))
+            a.addButton(withTitle: L("Şimdilik Kapat", "Dismiss"))
+            let s = a.runModal()
+            if s == .alertFirstButtonReturn {          // Wi-Fi kapat → çıkış
+                kabuk("/usr/sbin/networksetup", ["-setairportpower", wifiAygiti(), "off"])
+                let t = NSAlert()
+                t.messageText = L("Wi-Fi kapatıldı ✅", "Wi-Fi turned off ✅")
+                t.informativeText = L(
+                    "Telefon bağlantısı kesildi, sızıntı durdu. Ethernet'ten devam ediyorsunuz. " +
+                    "Telefonu tekrar kullanmak için menü çubuğundaki Wi-Fi simgesinden açın.",
+                    "The phone connection is cut and the leak stopped. You're on Ethernet now. " +
+                    "Turn Wi-Fi back on from the menu-bar Wi-Fi icon to use the phone again.")
+                t.runModal()
+                return
+            } else if s == .alertSecondButtonReturn {  // Rapor gönder → uyarı tekrar gelsin
+                yardimAc()
+                // döngü devam eder: sızıntı uyarısı yeniden gösterilir
+            } else {                                    // Şimdilik kapat → çıkış
+                return
+            }
         }
     }
 
@@ -216,45 +224,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     // --- Yardım / Geri Bildirim: geliştiriciye e-posta taslağı açar ---
     @objc func yardimAc() {
         NSApp.activate(ignoringOtherApps: true)
-        let a = NSAlert()
-        a.messageText = L("Yardım / Geri Bildirim", "Help / Feedback")
-        a.informativeText = L(
-            "Bir sorun, hata veya öneriniz mi var? Aşağıdaki düğme e-posta " +
-            "uygulamanızda geliştiriciye (Emir Ünal) bir mesaj taslağı açar. " +
-            "Olabildiğince açık yazın; en kısa sürede dönüş yapılır.\n\n" +
-            "Alternatif: GitHub üzerinde de sorun açabilirsiniz.",
-            "Have a problem, bug or suggestion? The button below opens a draft " +
-            "message to the developer (Emir Ünal) in your email app. Please be as " +
-            "clear as possible; you'll get a reply as soon as possible.\n\n" +
-            "Alternatively, you can open an issue on GitHub.")
-        a.addButton(withTitle: L("E-posta Gönder", "Send Email"))
-        a.addButton(withTitle: L("GitHub'da Aç", "Open on GitHub"))
-        a.addButton(withTitle: L("Vazgeç", "Cancel"))
-        let sonuc = a.runModal()
         let os = ProcessInfo.processInfo.operatingSystemVersionString
+        let sorunURL = veriDir.appendingPathComponent("sorun_raporu.txt")
+        let sorun = (try? String(contentsOf: sorunURL, encoding: .utf8)) ?? ""
         func enc(_ s: String) -> String {
             s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
         }
-        if sonuc == .alertFirstButtonReturn {
-            // Otomatik oluşmuş sorun raporu varsa e-postaya ekle
-            let sorunURL = veriDir.appendingPathComponent("sorun_raporu.txt")
-            let sorun = (try? String(contentsOf: sorunURL, encoding: .utf8)) ?? ""
-            let konu = sorun.isEmpty
-                ? L("TetherTrack — Geri Bildirim / Hata", "TetherTrack — Feedback / Issue")
-                : L("TetherTrack — Sorun Raporu", "TetherTrack — Problem Report")
-            var govde = L("Merhaba,\n\n[Sorununuzu, hatayı veya talebinizi buraya yazın]\n\n",
-                          "Hello,\n\n[Write your problem, bug or request here]\n\n")
-            if !sorun.isEmpty {
-                govde += L("\n--- Otomatik Sorun Raporu ---\n", "\n--- Automatic Problem Report ---\n") + sorun
-            }
-            govde += "\n---\nTetherTrack 1.0\nmacOS: \(os)"
-            if let url = URL(string: "mailto:emirunal@gmail.com?subject=\(enc(konu))&body=\(enc(govde))") {
+        // Tam metni HER ZAMAN panoya kopyala — mail açılmasa bile yapıştırılabilir
+        var tamMetin = L("Merhaba,\n\n[Sorununuzu, hatayı veya talebinizi buraya yazın]\n",
+                         "Hello,\n\n[Write your problem, bug or request here]\n")
+        if !sorun.isEmpty {
+            tamMetin += L("\n--- Otomatik Sorun Raporu ---\n", "\n--- Automatic Problem Report ---\n") + sorun
+        }
+        tamMetin += "\n---\nTetherTrack 1.1\nmacOS: \(os)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(tamMetin, forType: .string)
+
+        let konu = sorun.isEmpty ? L("TetherTrack — Geri Bildirim", "TetherTrack — Feedback")
+                                 : L("TetherTrack — Sorun Raporu", "TetherTrack — Problem Report")
+        let a = NSAlert()
+        a.messageText = L("Geri Bildirim / Sorun Raporu", "Feedback / Problem Report")
+        a.informativeText = L(
+            "Rapor panoya KOPYALANDI ✅\nAlıcı: emirunal@gmail.com\n\n" +
+            "Bir yol seçin; açılan taslağa ⌘V ile yapıştırıp gönderin. Hiçbiri açılmazsa, " +
+            "panodaki metni herhangi bir e-posta ya da mesajla (WhatsApp vb.) bu adrese iletebilirsiniz.",
+            "The report has been COPIED to the clipboard ✅\nRecipient: emirunal@gmail.com\n\n" +
+            "Pick a path and paste with ⌘V into the draft that opens. If none opens, " +
+            "send the clipboard text to this address via any email or message (WhatsApp, etc.).")
+        a.addButton(withTitle: L("Gmail'i Tarayıcıda Aç", "Open Gmail in Browser"))
+        a.addButton(withTitle: L("Mail Uygulamasını Aç", "Open Mail App"))
+        a.addButton(withTitle: L("GitHub'da Aç", "Open on GitHub"))
+        a.addButton(withTitle: L("Kapat (panoda hazır)", "Close (ready on clipboard)"))
+        switch a.runModal() {
+        case .alertFirstButtonReturn:   // Gmail web (tarayıcı — en güvenilir)
+            if let url = URL(string: "https://mail.google.com/mail/?view=cm&fs=1&to=emirunal@gmail.com&su=\(enc(konu))") {
                 NSWorkspace.shared.open(url)
             }
-        } else if sonuc == .alertSecondButtonReturn {
+        case .alertSecondButtonReturn:  // Mail uygulaması (mailto)
+            if let url = URL(string: "mailto:emirunal@gmail.com?subject=\(enc(konu))&body=\(enc(tamMetin))") {
+                NSWorkspace.shared.open(url)
+            }
+        case .alertThirdButtonReturn:   // GitHub Issues
             if let url = URL(string: "https://github.com/unale/tethertrack/issues/new") {
                 NSWorkspace.shared.open(url)
             }
+        default:
+            break
         }
     }
 
@@ -453,9 +468,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         // Takılı eski proxy'leri temizle, taze başlat (port çakışması önlenir)
         kabuk("/usr/bin/pkill", ["-f", "hotspot_proxy"])
         usleep(300_000)
-        let proxy = veriDir.appendingPathComponent("hotspot_proxy.py").path
-        if FileManager.default.fileExists(atPath: proxy) {
-            kabuk(pythonYolu(), [proxy, "8899"], bekle: false)
+        // Gömülü hotspot proxy binary'si (Python gerektirmez)
+        let proxyBin = (Bundle.main.resourcePath ?? "") + "/hotspot_proxy"
+        if FileManager.default.fileExists(atPath: proxyBin) {
+            kabuk(proxyBin, ["8899"], bekle: false)
         }
         let profil = veriDir.appendingPathComponent("hotspot-chrome").path
         kabuk("/usr/bin/open",

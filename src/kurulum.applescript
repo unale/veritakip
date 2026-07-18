@@ -20,18 +20,8 @@ on run
 		return
 	end if
 
-	-- python3 kontrolü
-	set pyVar to do shell script "command -v python3 || true"
-	if pyVar is "" then
-		set cevap to button returned of (display dialog ¬
-			"Kurulum için Apple'ın ücretsiz komut satırı araçları gerekiyor (python3 içerir)." & return & return & ¬
-			"Şimdi kuralım mı? Apple'ın kurulum penceresi açılacak; bittikten sonra VeriTakip Kur'u tekrar çalıştırın." ¬
-			buttons {"Vazgeç", "Araçları Kur"} default button "Araçları Kur" with title "VeriTakip Kurulum")
-		if cevap is "Araçları Kur" then
-			do shell script "xcode-select --install || true"
-		end if
-		return
-	end if
+	-- (Python kontrolü kaldırıldı — ölçüm motoru artık gömülü binary; hiçbir
+	--  ek bileşen gerekmez.)
 
 	-- Sorular
 	try

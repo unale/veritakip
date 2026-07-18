@@ -1,20 +1,14 @@
 #!/bin/bash
-# VeriTakip kurulum betiği
+# VeriTakip / TetherTrack kurulum betiği (Terminal alternatifi)
 # Kullanım: Terminal'de bu klasöre gelip:  bash kur.sh
+# NOT: Python GEREKTİRMEZ — ölçüm motoru uygulama paketine gömülü universal binary.
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "╔══════════════════════════════════════════════╗"
-echo "║  VeriTakip — Hotspot Veri Kullanımı Takibi   ║"
+echo "║  TetherTrack (VeriTakip) — Kurulum           ║"
 echo "╚══════════════════════════════════════════════╝"
 echo
-
-PY="$(command -v python3 || true)"
-if [ -z "$PY" ]; then
-    echo "HATA: python3 bulunamadı."
-    echo "Şu komutla kurun ve tekrar deneyin:  xcode-select --install"
-    exit 1
-fi
 
 # --- Sorular ---
 read -p "Aylık internet kotanız kaç GB? [60]: " KOTA
@@ -29,23 +23,23 @@ else
     ONEKLER='["172.20.10."]'
 fi
 
-# --- Dosyalar ---
+# --- Config ---
 mkdir -p "$HOME/VeriTakip"
-cp "$DIR/veri_takip.py" "$HOME/VeriTakip/"
-cp "$DIR/hotspot_proxy.py" "$HOME/VeriTakip/" 2>/dev/null || true
 if [ ! -f "$HOME/VeriTakip/config.json" ]; then
     cat > "$HOME/VeriTakip/config.json" <<EOF
-{"aylik_kota_gb": $KOTA, "donem_baslangic_gunu": $GUN, "gunluk_uyari_gb": 2.0, "aylik_uyari_yuzde": 80, "hotspot_onekler": $ONEKLER}
+{"aylik_kota_gb": $KOTA, "donem_baslangic_gunu": $GUN, "hotspot_onekler": $ONEKLER}
 EOF
 else
     echo "Mevcut config.json korundu."
 fi
 
-# --- Menü çubuğu uygulaması ---
+# --- Uygulama (gömülü ölçüm binary'si ile) ---
 mkdir -p "$HOME/Applications"
 rm -rf "$HOME/Applications/VeriTakip.app"
 cp -R "$DIR/VeriTakip.app" "$HOME/Applications/"
 xattr -dr com.apple.quarantine "$HOME/Applications/VeriTakip.app" 2>/dev/null || true
+OLCUM_BIN="$HOME/Applications/VeriTakip.app/Contents/Resources/veri_takip"
+chmod +x "$OLCUM_BIN" 2>/dev/null || true
 
 # --- Arka plan servisleri ---
 UID_="$(id -u)"
@@ -57,7 +51,7 @@ cat > "$OLCUM" <<EOF
 <dict>
     <key>Label</key><string>com.veritakip.olcum</string>
     <key>ProgramArguments</key>
-    <array><string>$PY</string><string>$HOME/VeriTakip/veri_takip.py</string></array>
+    <array><string>$OLCUM_BIN</string></array>
     <key>StartInterval</key><integer>60</integer>
     <key>WatchPaths</key>
     <array>
@@ -69,8 +63,6 @@ cat > "$OLCUM" <<EOF
 </dict>
 </plist>
 EOF
-launchctl bootout "gui/$UID_/com.veritakip.olcum" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_" "$OLCUM"
 
 APP="$HOME/Library/LaunchAgents/com.veritakip.app.plist"
 cat > "$APP" <<EOF
@@ -85,17 +77,15 @@ cat > "$APP" <<EOF
 </dict>
 </plist>
 EOF
+
+launchctl bootout "gui/$UID_/com.veritakip.olcum" 2>/dev/null || true
+launchctl bootstrap "gui/$UID_" "$OLCUM"
 launchctl bootout "gui/$UID_/com.veritakip.app" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_" "$APP"
 
-# --- Kısayol + ilk ölçüm ---
-"$PY" "$HOME/VeriTakip/veri_takip.py"
+"$OLCUM_BIN" || true
 ln -sf "$HOME/VeriTakip/rapor.html" "$HOME/Desktop/VeriTakip Raporu.html"
 
 echo
-echo "✅ Kurulum tamamlandı!"
-echo "   • Menü çubuğunda (saatin yanında) 📶 simgesini göreceksiniz."
-echo "   • Telefonunuzun hotspot'una bağlanınca mini pencere kendiliğinden açılır."
-echo "   • Ayrıntılı rapor: Masaüstünüzdeki 'VeriTakip Raporu.html'"
-echo "   • Ayarlar: ~/VeriTakip/config.json"
-echo "   • Kaldırmak için: bash kaldir.sh"
+echo "✅ Kurulum tamamlandı! Menü çubuğunda 📶 simgesini göreceksiniz."
+echo "   Kaldırmak için: bash kaldir.sh"

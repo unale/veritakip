@@ -1,6 +1,7 @@
 #!/bin/bash
 # VeriTakip kurulum motoru — "VeriTakip Kur.app" tarafından çağrılır.
 # Kullanım: kur_motor.sh <kota_gb> <kesim_gunu> <iphone|android> [--dry]
+# NOT: Python GEREKTİRMEZ — ölçüm motoru uygulama paketine gömülü universal binary.
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 KOTA="${1:-60}"
@@ -12,12 +13,6 @@ case "$KOTA" in (*[!0-9]*|"") echo "HATA: Kota sayı olmalı (örn. 60)"; exit 1
 case "$GUN" in (*[!0-9]*|"") echo "HATA: Kesim günü 1-28 arası olmalı"; exit 1;; esac
 [ "$GUN" -ge 1 ] && [ "$GUN" -le 28 ] || { echo "HATA: Kesim günü 1-28 arası olmalı"; exit 1; }
 
-PY="$(command -v python3 || true)"
-if [ -z "$PY" ]; then
-    echo "PYTHON_YOK"
-    exit 2
-fi
-
 if [ "$TEL" = "android" ]; then
     ONEKLER='["172.20.10.", "192.168.42.", "192.168.43.", "192.168.44."]'
 else
@@ -25,16 +20,18 @@ else
 fi
 
 mkdir -p "$HOME/VeriTakip"
-cp "$DIR/veri_takip.py" "$HOME/VeriTakip/"
-cp "$DIR/hotspot_proxy.py" "$HOME/VeriTakip/" 2>/dev/null || true
 cat > "$HOME/VeriTakip/config.json" <<EOF
-{"aylik_kota_gb": $KOTA, "donem_baslangic_gunu": $GUN, "gunluk_uyari_gb": 2.0, "aylik_uyari_yuzde": 80, "hotspot_onekler": $ONEKLER}
+{"aylik_kota_gb": $KOTA, "donem_baslangic_gunu": $GUN, "hotspot_onekler": $ONEKLER}
 EOF
 
 mkdir -p "$HOME/Applications"
 rm -rf "$HOME/Applications/VeriTakip.app"
 cp -R "$DIR/VeriTakip.app" "$HOME/Applications/"
 xattr -dr com.apple.quarantine "$HOME/Applications/VeriTakip.app" 2>/dev/null || true
+
+# Ölçüm motoru: uygulama paketine gömülü universal binary (Python gerekmez)
+OLCUM_BIN="$HOME/Applications/VeriTakip.app/Contents/Resources/veri_takip"
+chmod +x "$OLCUM_BIN" 2>/dev/null || true
 
 UID_="$(id -u)"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Desktop"
@@ -46,7 +43,7 @@ cat > "$OLCUM" <<EOF
 <dict>
     <key>Label</key><string>com.veritakip.olcum</string>
     <key>ProgramArguments</key>
-    <array><string>$PY</string><string>$HOME/VeriTakip/veri_takip.py</string></array>
+    <array><string>$OLCUM_BIN</string></array>
     <key>StartInterval</key><integer>60</integer>
     <key>WatchPaths</key>
     <array>
@@ -80,6 +77,7 @@ if [ "$DRY" != "--dry" ]; then
     launchctl bootstrap "gui/$UID_" "$APP"
 fi
 
-"$PY" "$HOME/VeriTakip/veri_takip.py"
+# İlk ölçümü çalıştır (rapor + veri dosyaları oluşsun)
+"$OLCUM_BIN" || true
 ln -sf "$HOME/VeriTakip/rapor.html" "$HOME/Desktop/VeriTakip Raporu.html"
 echo "KURULUM_TAMAM"

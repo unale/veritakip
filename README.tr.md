@@ -46,8 +46,8 @@ bash build.sh
 ## Gereksinimler
 
 - macOS 12 (Monterey) veya üzeri — Apple Silicon ve Intel desteklenir
-- `python3` (macOS komut satırı araçlarıyla gelir; yoksa `xcode-select --install`)
-- Derlemek için Xcode komut satırı araçları
+- **Kullanıcı için hiçbir bağımlılık yok** — ölçüm motoru gömülü universal binary'dir (Python içine gömülüdür); kurulacak bir şey yok
+- Kaynaktan *derlemek* için yalnızca Xcode komut satırı araçları
 
 ## Nasıl çalışır?
 

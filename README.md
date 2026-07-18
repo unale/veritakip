@@ -47,8 +47,8 @@ Produces: `VeriTakip.app` (menu-bar app), `VeriTakip Kur.app` (installer wizard)
 ## Requirements
 
 - macOS 12 (Monterey) or later — Apple Silicon and Intel supported
-- `python3` (ships with macOS command-line tools; otherwise `xcode-select --install`)
-- Xcode command-line tools to build
+- **No dependencies for users** — the measurement engine is a bundled universal binary (Python embedded); nothing to install
+- Xcode command-line tools only to *build* from source
 
 ## How it works
 
