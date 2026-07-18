@@ -33,6 +33,11 @@ for mod in veri_takip hotspot_proxy; do
     chmod +x "$APP/Contents/Resources/$mod"
 done
 
+echo "▸ Ad-hoc imzalama (indirilince 'hasarlı' hatasını önler)…"
+# Genişletilmiş öznitelikleri temizle (codesign 'resource fork' hatası verir), sonra imzala
+xattr -cr "$APP"
+codesign --force --deep -s - --timestamp=none "$APP" 2>&1 | grep -v "replacing" || true
+
 echo "▸ Kurulum sihirbazı (VeriTakip Kur.app) derleniyor…"
 KUR="VeriTakip Kur.app"
 rm -rf "$KUR"
@@ -41,6 +46,9 @@ mkdir -p "$KUR/Contents/Resources/payload"
 # Payload: uygulama (binary gömülü) + kurulum motoru + kaldırma — Python dosyası YOK
 cp "$SRC/kaldir.sh" "$SRC/kur_motor.sh" "$KUR/Contents/Resources/payload/"
 cp -R "$APP" "$KUR/Contents/Resources/payload/"
+# Kurulum sihirbazını da imzala (kullanıcı önce bunu açıyor)
+xattr -cr "$KUR"
+codesign --force --deep -s - --timestamp=none "$KUR" 2>&1 | grep -v "replacing" || true
 
 echo "▸ Dağıtım zip'i oluşturuluyor…"
 rm -f VeriTakip-Kurulum.zip
