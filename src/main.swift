@@ -201,7 +201,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             "hotspot": L("🟢 Hotspot 📱 — kota sayılıyor!", "🟢 Hotspot 📱 — counting quota!"),
             "vpn": L("🔒 VPN aktif — sayım fiziksel hatlardan", "🔒 VPN active — counting from physical links"),
             "yok": L("⚪️ Bağlantı yok", "⚪️ No connection")]
-        durumSatiri?.title = L("Bağlantı: ", "Connection: ") + (etiketler[detay] ?? L("bilinmiyor", "unknown"))
+        var durumMetni = L("Bağlantı: ", "Connection: ") + (etiketler[detay] ?? L("bilinmiyor", "unknown"))
+        // Telefon fiziksel bağlıysa (aktif olmasa bile) kullanıcı bunu net görsün
+        let bagli = (state["bagli_turler"] as? [String]) ?? []
+        if bagli.contains("hotspot") && detay != "hotspot" {
+            durumMetni += L("   ·   📱 Telefon BAĞLI!", "   ·   📱 Phone CONNECTED!")
+        }
+        durumSatiri?.title = durumMetni
         if !ilkOkuma && ag == "hotspot" && sonAg != "hotspot" {
             panelGoster()
         }

@@ -424,6 +424,18 @@ def ornek_al():
     wifi_dev = wifi_aygiti()
     fiz = fiziksel_arayuzler()
     saat = str(datetime.now().hour)   # 0-23, saatlik kayıt için
+
+    # FİZİKSEL olarak bağlı ağ türleri (varsayılan rota değil — o an bağlı olanlar).
+    # Kullanıcı telefonun bağlı olduğunu Ethernet birincilken de görebilsin diye.
+    bagli_turler = set()
+    for _ar, _ip in fiz.items():
+        if ip_hotspot_mu(_ip, config):
+            bagli_turler.add(HOTSPOT)
+        elif _ar == wifi_dev:
+            bagli_turler.add(WIFI)
+        else:
+            bagli_turler.add(ETHERNET)
+    state["bagli_turler"] = sorted(bagli_turler)
     tur_delta = {HOTSPOT: 0, WIFI: 0, ETHERNET: 0}
     for arayuz, ip in fiz.items():
         sayac = bayt_sayaclari(arayuz)
@@ -968,12 +980,29 @@ const M_YOK = {json.dumps(T("Bugün bu ağda kayıtlı uygulama trafiği yok.", 
 
     # Menü çubuğu uygulamasının mini penceresi için kompakt görünüm
     saat = son_ornek[11:16] if len(son_ornek) >= 16 else son_ornek
+    # Çip durumu: aktif (yeşil) / fiziksel bağlı ama aktif değil (sarı) / yok (gri)
+    bagli_t = state.get("bagli_turler", [])
+
+    def cip_sinif(anahtar):
+        if detay == anahtar:
+            return " on"          # aktif çıkış yolu
+        if anahtar in bagli_t:
+            return " bagli"       # fiziksel bağlı, kullanılırsa kotadan gider
+        return ""
     cipler = "".join(
-        f'<span class="cip{" on" if detay == anahtar else ""}">{ad}</span>'
+        f'<span class="cip{cip_sinif(anahtar)}">{ad}</span>'
         for anahtar, ad in (("ethernet", "🔌 Ethernet"),
                             ("wifi", "🏠 Wi-Fi"),
                             ("hotspot", "📱 Hotspot"),
                             ("vpn", "🔒 VPN")))
+    # Telefon fiziksel bağlıysa ama aktif değilse net bir hatırlatma
+    telefon_notu = ""
+    if HOTSPOT in bagli_t and detay != "hotspot":
+        telefon_notu = ("<div class='telnot'>" + T(
+            "📱 Telefon BAĞLI — şu an Ethernet/Wi-Fi kullanılıyor. Telefondan bir şey "
+            "geçerse kotadan gider.",
+            "📱 Phone CONNECTED — currently using Ethernet/Wi-Fi. Anything via the phone "
+            "counts against your quota.") + "</div>")
     if kalan_bilgi:
         mini_kalan = T(
             f'Kalan: <b>{kalan_bilgi["kalan_gb"]:.1f} GB</b> (girişinize göre) &nbsp;·&nbsp; '
@@ -998,13 +1027,18 @@ const M_YOK = {json.dumps(T("Bugün bu ağda kayıtlı uygulama trafiği yok.", 
  .cip {{ border-radius:12px; padding:3px 11px; font-size:11px;
         background:#e3e7ea; color:#8a9199; }}
  .cip.on {{ background:#27ae60; color:#fff; font-weight:600; }}
+ .cip.bagli {{ background:#f39c12; color:#fff; font-weight:600; }}
  @media (prefers-color-scheme: dark) {{ .cip {{ background:#3a3d42; }}
-   .cip.on {{ background:#27ae60; }} }}
+   .cip.on {{ background:#27ae60; }} .cip.bagli {{ background:#f39c12; }} }}
  .alarm {{ background:#e74c3c; color:#fff; padding:8px 11px; border-radius:9px;
           font-size:12px; font-weight:600; margin-bottom:10px; line-height:1.35; }}
+ .telnot {{ background:#fdf2e0; color:#8a5a12; padding:7px 10px; border-radius:9px;
+           font-size:11.5px; margin-bottom:10px; line-height:1.35; border:1px solid #f39c1240; }}
+ @media (prefers-color-scheme: dark) {{ .telnot {{ background:#3a2f1a; color:#f0c060; }} }}
 </style></head><body>
 {("<div class='alarm'>" + (T(f"⚠️ Hotspot dışında telefondan veri sızıyor: {', '.join(state.get('sizinti', {}).keys())}. Kota eriyor! Yardım: 📶 menü.", f"⚠️ Phone data leak outside hotspot: {', '.join(state.get('sizinti', {}).keys())}. Quota draining! Help: 📶 menu.") if state.get("sizinti") else T("⚠️ İnternet TELEFONDAN gidiyor! Kota eriyor.", "⚠️ Internet via PHONE! Quota draining.")) + "</div>") if state.get("anomali") else ""}
 <div class="cips">{cipler}</div>
+{telefon_notu}
 <div>📶 {T("Bugün (hotspot)", "Today (hotspot)")}: <span class="b">{bugun_gb:.2f} GB</span></div>
 <div class="bar"><div style="width:{yuzde:.0f}%"></div></div>
 <div class="alt">{T("Bu dönem toplam", "This period total")}: <b>{donem_gb:.1f} GB</b> {T("harcandı", "used")} ({kota} GB {T("paket", "plan")})</div>
